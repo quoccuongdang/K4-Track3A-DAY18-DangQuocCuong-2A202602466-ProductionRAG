@@ -5,8 +5,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- API Keys ---
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# --- API Keys & LLM ---
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY") or os.getenv("OPENROUTER_API_KEY", "")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE", "")
+LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-4o-mini")
+
+# Sync to os.environ so OpenAI client & Ragas can pick them up automatically
+if OPENAI_API_KEY and not os.environ.get("OPENAI_API_KEY"):
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+if OPENAI_BASE_URL:
+    os.environ.setdefault("OPENAI_BASE_URL", OPENAI_BASE_URL)
+    os.environ.setdefault("OPENAI_API_BASE", OPENAI_BASE_URL)
 
 # --- Qdrant ---
 QDRANT_HOST = "localhost"

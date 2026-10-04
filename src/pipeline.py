@@ -37,13 +37,20 @@ def build_pipeline():
 
     # Step 2: Enrichment (M5)
     t0 = time.time()
-    print(f"\n[2/4] Enriching {len(all_chunks)} chunks (M5, 1 API call/chunk)...", flush=True)
-    enriched = enrich_chunks(all_chunks)
-    if enriched:
-        all_chunks = [{"text": e.enriched_text, "metadata": e.auto_metadata} for e in enriched]
-        print(f"  ✓ Enriched {len(enriched)} chunks ({time.time()-t0:.1f}s)", flush=True)
+    cache_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "enriched_chunks_cache.json")
+    if os.path.exists(cache_path):
+        import json
+        with open(cache_path, encoding="utf-8") as f:
+            all_chunks = json.load(f)
+        print(f"\n[2/4] Loaded {len(all_chunks)} cached enriched chunks ({time.time()-t0:.1f}s)", flush=True)
     else:
-        print("  ⚠️  M5 not implemented — using raw chunks", flush=True)
+        print(f"\n[2/4] Enriching {len(all_chunks)} chunks (M5, 1 API call/chunk)...", flush=True)
+        enriched = enrich_chunks(all_chunks)
+        if enriched:
+            all_chunks = [{"text": e.enriched_text, "metadata": e.auto_metadata} for e in enriched]
+            print(f"  ✓ Enriched {len(enriched)} chunks ({time.time()-t0:.1f}s)", flush=True)
+        else:
+            print("  ⚠️  M5 not implemented — using raw chunks", flush=True)
 
     # Step 3: Index (M2)
     t0 = time.time()
@@ -68,13 +75,13 @@ def run_query(query: str, search: HybridSearch, reranker: CrossEncoderReranker) 
     reranked = reranker.rerank(query, docs, top_k=RERANK_TOP_K)
     contexts = [r.text for r in reranked] if reranked else [r.text for r in results[:3]]
 
-    from config import OPENAI_API_KEY
+    from config import OPENAI_API_KEY, LLM_MODEL
     if OPENAI_API_KEY and contexts:
         try:
             from openai import OpenAI
             client = OpenAI()
             context_str = "\n\n".join(contexts)
-            resp = client.chat.completions.create(model="gpt-4o-mini", messages=[
+            resp = client.chat.completions.create(model=LLM_MODEL, messages=[
                 {"role": "system", "content": "Trả lời CHỈ dựa trên context. Nếu không có → nói 'Không tìm thấy.'"},
                 {"role": "user", "content": f"Context:\n{context_str}\n\nCâu hỏi: {query}"},
             ])
@@ -99,7 +106,7 @@ def evaluate_pipeline(search: HybridSearch, reranker: CrossEncoderReranker):
         answers.append(answer)
         all_contexts.append(contexts)
         ground_truths.append(item["ground_truth"])
-        print(f"  [{i+1}/{len(test_set)}] {item['question'][:50]}...", flush=True)
+        print(f"  Processed query [{i+1}/{len(test_set)}]...", flush=True)
 
     t0 = time.time()
     print(f"\n[Eval] Running RAGAS (4 metrics × {len(test_set)} questions)...", flush=True)
